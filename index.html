@@ -1,45 +1,43 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ja">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>Flower Liner WebAR</title>
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <style>
   html, body {
     margin: 0;
-    padding: 0;
     height: 100%;
     background: #000;
-    color: #fff;
-    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans JP", sans-serif;
+    overflow: hidden;
+    touch-action: manipulation; /* タップを有効化 */
+    -webkit-user-select: none;
   }
 
-  /* スタート画面 */
   #startScreen {
     position: fixed;
     inset: 0;
+    background: rgba(0,0,0,0.9);
     display: flex;
     flex-direction: column;
-    align-items: center;
     justify-content: center;
-    background: rgba(0, 0, 0, 0.9);
+    align-items: center;
     z-index: 9999;
     text-align: center;
   }
 
-  /* ボタン */
   #startBtn {
     background: #29b6f6;
     color: #012;
-    font-size: 18px;
-    font-weight: bold;
-    padding: 12px 24px;
     border: none;
     border-radius: 12px;
+    font-size: 20px;
+    font-weight: bold;
+    padding: 14px 28px;
     cursor: pointer;
     z-index: 10000;
     touch-action: manipulation;
-    transition: background 0.2s, color 0.2s;
+    -webkit-tap-highlight-color: transparent;
   }
 
   #startBtn:active {
@@ -48,37 +46,34 @@
   }
 
   #info {
+    color: #ccc;
     margin-top: 10px;
     font-size: 14px;
-    opacity: 0.8;
   }
 </style>
 </head>
 
 <body>
-  <!-- 起動前の画面 -->
   <div id="startScreen">
     <h1>フラワー長井線 WebAR</h1>
-    <button id="startBtn">開始する</button>
-    <p id="info">タップして体験を開始してください。</p>
+    <button id="startBtn" ontouchstart="">開始する</button>
+    <p id="info">タップして体験を開始してください</p>
   </div>
 
-  <!-- スクリプト -->
   <script type="module">
-    // DOMが完全に読み込まれてからイベントを登録
-    window.addEventListener('DOMContentLoaded', () => {
-      const startBtn = document.getElementById('startBtn');
-      const startScreen = document.getElementById('startScreen');
+    // iOS Safariのクリック制限を回避するために、touchstartも登録
+    const startBtn = document.getElementById("startBtn");
+    const startScreen = document.getElementById("startScreen");
 
-      // ボタンがクリックされたら反応確認
-      startBtn.addEventListener('click', () => {
-        // ボタン反応確認
-        alert('ボタンが反応しました ✅');
-        // 起動画面を非表示に
-        startScreen.remove();
-        // 本処理（AR開始など）をここに追加予定
-      });
-    });
+    function onStart() {
+      alert("✅ ボタンが反応しました！");
+      startScreen.remove();
+      // 次にAR処理やカメラ起動処理をここに追加可能
+    }
+
+    // 両方登録（iOS対策）
+    startBtn.addEventListener("click", onStart, { passive: false });
+    startBtn.addEventListener("touchstart", onStart, { passive: false });
   </script>
 </body>
 </html>
