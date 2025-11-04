@@ -2,24 +2,27 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8" />
-  <title>Flower Liner WebAR - camera test</title>
+  <title>フラワー長井線 WebAR</title>
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
   <style>
     html,body{
       margin:0;height:100%;background:#000;color:#fff;
       font-family:system-ui,-apple-system,sans-serif;
+      overflow:hidden;
     }
     #startScreen{
       position:fixed;inset:0;
       display:flex;flex-direction:column;gap:10px;
       align-items:center;justify-content:center;
-      background:rgba(0,0,0,.9);z-index:9999;
+      background:rgba(0,0,0,.9);
+      z-index:10;
       text-align:center;
     }
     #startBtn{
       background:#29b6f6;color:#012;
       border:none;border-radius:12px;
-      padding:12px 24px;font-size:18px;font-weight:600;
+      padding:12px 24px;
+      font-size:18px;font-weight:600;
       touch-action:manipulation;
     }
     #startBtn:active{background:#0288d1;color:#fff;}
@@ -28,47 +31,48 @@
       object-fit:cover;display:none;background:#000;
     }
     #status{
-      position:fixed;top:10px;left:50%;transform:translateX(-50%);
-      background:rgba(0,0,0,.4);padding:6px 10px;border-radius:10px;
-      font-size:13px;z-index:5000;display:none;
+      position:fixed;top:10px;left:50%;
+      transform:translateX(-50%);
+      background:rgba(0,0,0,.5);
+      padding:6px 10px;border-radius:10px;
+      font-size:13px;z-index:20;
+      display:none;
     }
   </style>
 </head>
 <body>
   <div id="startScreen">
     <h1>フラワー長井線 WebAR</h1>
-    <button id="startBtn" onclick="startApp()" ontouchstart="startApp()">開始する</button>
-    <p style="opacity:.7;font-size:13px">タップするとカメラを起動します</p>
+    <button id="startBtn">開始する</button>
+    <p style="opacity:.7;font-size:13px">タップ後、カメラを起動します</p>
   </div>
 
   <video id="cam" autoplay playsinline muted></video>
   <div id="status">待機中…</div>
 
   <script>
-    async function startApp() {
-      // 1. 起動画面を消す
-      var startScreen = document.getElementById('startScreen');
-      startScreen.style.display = 'none';
+    const startScreen = document.getElementById('startScreen');
+    const startBtn = document.getElementById('startBtn');
+    const videoEl = document.getElementById('cam');
+    const statusEl = document.getElementById('status');
 
-      // 2. ステータス表示
-      var statusEl = document.getElementById('status');
+    startBtn.addEventListener('click', startApp);
+    startBtn.addEventListener('touchstart', startApp);
+
+    async function startApp(e){
+      e.preventDefault();
+      startScreen.style.display = 'none';
       statusEl.style.display = 'block';
       statusEl.textContent = 'カメラ起動中…';
 
-      // 3. カメラを開く
-      var videoEl = document.getElementById('cam');
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'environment' }
-        });
+      try{
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
         videoEl.srcObject = stream;
         videoEl.style.display = 'block';
-        statusEl.textContent = 'カメラOK ✅（ここまでは成功）';
-      } catch (err) {
-        statusEl.textContent = 'カメラが使えませんでした ❌\n' + err.name + ': ' + err.message;
+        statusEl.textContent = 'カメラOK ✅';
+      }catch(err){
+        statusEl.textContent = 'カメラエラー ❌\n' + err.name + ': ' + err.message;
       }
-
-      // ★ three.js や GLB の読み込みは、ここに後から足します
     }
   </script>
 </body>
