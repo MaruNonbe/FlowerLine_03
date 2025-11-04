@@ -1,49 +1,304 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ja">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>フラワー長井線 WebAR</title>
-    <link rel="stylesheet" href="style.css">
-
-    <script async src="https://unpkg.com/es-module-shims@1.10.0/dist/es-module-shims.js"></script>
-
-    <script type="importmap">
-    {
-        "imports": {
-            "three": "https://unpkg.com/three@0.164.1/build/three.module.js",
-            "three/addons/": "https://unpkg.com/three@0.164.1/examples/jsm/"
-        }
+  <meta charset="utf-8" />
+  <title>Flower Liner WebAR</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <style>
+    html,body{
+      margin:0;
+      height:100%;
+      overflow:hidden;
+      background:transparent;
+      font-family:system-ui,-apple-system,Segoe UI,Roboto;
     }
-    </script>
+    #gate{
+      position:fixed;inset:0;
+      background:rgba(0,0,0,.85);color:#fff;
+      display:flex;flex-direction:column;gap:14px;
+      align-items:center;justify-content:center;
+      z-index:20;
+    }
+    #gate button{
+      padding:12px 18px;border-radius:14px;border:none;
+      background:#29b6f6;color:#012;font-weight:600;font-size:16px;
+    }
+    #mode{
+      position:fixed;top:10px;left:10px;
+      background:rgba(0,0,0,.5);color:#fff;
+      padding:4px 8px;border-radius:10px;font-size:12px;z-index:15;
+    }
+    #msg{
+      position:fixed;top:10px;left:50%;transform:translateX(-50%);
+      background:rgba(0,0,0,.5);color:#fff;
+      padding:5px 10px;border-radius:10px;font-size:13px;z-index:15;
+    }
+    #ui{
+      position:fixed;left:0;right:0;bottom:0;
+      display:none;gap:10px;justify-content:center;flex-wrap:wrap;
+      padding:12px 12px 20px;
+      z-index:15;
+    }
+    .btn{
+      -webkit-tap-highlight-color: transparent;
+      padding:10px 14px;min-width:80px;
+      border-radius:14px;border:none;
+      background:rgba(255,255,255,.9);
+      font-size:15px;
+    }
+  </style>
 </head>
 <body>
-    <div id="welcome-screen">
-        <h1>フラワー長井線 WebAR</h1>
-        <button id="start-ar-button">ARを開始</button>
-        <p>（カメラの使用を許可してください）</p>
-    </div>
+  <!-- 起動時の許可画面 -->
+  <div id="gate">
+    <div>🔊 はじめにタップしてカメラの使用を許可してください</div>
+    <button id="startBtn">開始する</button>
+    <div style="opacity:.7;font-size:13px">iPhoneはマーカーAR、Androidなど対応端末は平面検出ARを使います。</div>
+  </div>
 
-    <div id="ar-ui" style="display: none;">
-        <div class="controls-grid">
-            <div></div>
-            <button id="btn-forward" class="control-btn">↑ 前進</button>
-            <div></div>
+  <!-- 状態表示 -->
+  <div id="mode">mode: -</div>
+  <div id="msg">準備中…</div>
 
-            <button id="btn-left" class="control-btn">← 左折</button>
-            <button id="btn-stop" class="control-btn">■ 停止</button>
-            <button id="btn-right" class="control-btn">→</button>
+  <!-- 下部の操作UI（モデルを置いた後に使う） -->
+  <div id="ui">
+    <button class="btn" id="btnF">前進</button>
+    <button class="btn" id="btnB">後進</button>
+    <button class="btn" id="btnL">左折</button>
+    <button class="btn" id="btnR">右折</button>
+  </div>
 
-            <div></div>
-            <button id="btn-backward" class="control-btn">↓ 後進</button>
-            <div></div>
-        </div>
+<script type="module">
+/* =========================================================
+   端末判定
+   ========================================================= */
+const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
 
-        <div class="texture-controls">
-            <label for="texture-upload">顔写真を変更:</label>
-            <input type="file" id="texture-upload" accept="image/*">
-        </div>
-    </div>
+const startBtn = document.getElementById('startBtn');
+const gateEl   = document.getElementById('gate');
+const modeEl   = document.getElementById('mode');
+const msgEl    = document.getElementById('msg');
+const uiEl     = document.getElementById('ui');
+
+startBtn.addEventListener('click', async () => {
+  gateEl.style.display = 'none';
+  if (isIOS) {
+    // iOS は AR.js マーカーに強制
+    modeEl.textContent = 'mode: Marker AR (iOS)';
+    startMarkerAR();
+  } else {
+    // Android など → WebXR
+    modeEl.textContent = 'mode: WebXR (plane hit-test)';
+    startWebXR();
+  }
+});
+
+/* =========================================================
+   WebXR ルート（Android / 対応ブラウザ）
+   three.js を動的インポートして使います
+   ========================================================= */
+async function startWebXR(){
+  msgEl.textContent = '床を探しています…';
+  uiEl.style.display = 'flex';
+
+  const [
+    {default: THREE},
+    {ARButton},
+    {GLTFLoader}
+  ] = await Promise.all([
+    import('https://unpkg.com/three@0.159.0/build/three.module.js'),
+    import('https://unpkg.com/three@0.159.0/examples/jsm/webxr/ARButton.js'),
+    import('https://unpkg.com/three@0.159.0/examples/jsm/loaders/GLTFLoader.js')
+  ]);
+
+  const renderer = new THREE.WebGLRenderer({antialias:true, alpha:true});
+  renderer.setPixelRatio(devicePixelRatio);
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.xr.enabled = true;
+  renderer.setClearAlpha(0); // カメラを透かす
+  document.body.appendChild(renderer.domElement);
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera();
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1));
+
+  // ヒット位置を示すリング
+  const reticle = new THREE.Mesh(
+    new THREE.RingGeometry(0.08, 0.12, 32).rotateX(-Math.PI/2),
+    new THREE.MeshBasicMaterial({color:0x00ff99})
+  );
+  reticle.matrixAutoUpdate = false;
+  reticle.visible = false;
+  scene.add(reticle);
+
+  // 実際のARボタンは隠す
+  const realBtn = ARButton.createButton(renderer, {
+    requiredFeatures: ['hit-test']
+  });
+  realBtn.style.display = 'none';
+  document.body.appendChild(realBtn);
+  // 代わりに起動時に自動クリック（もうstartBtnは消えてるのでOK）
+  realBtn.click();
+
+  // モデル読み込み
+  let train = null;
+  const loader = new GLTFLoader();
+  loader.load('./AR-Train_Nagai.glb', (gltf)=>{
+    train = gltf.scene;
+    train.visible = false;
+    scene.add(train);
+  });
+
+  // ヒットテスト用
+  let hitSource = null;
+  let hitSourceRequested = false;
+
+  // ボタンによる移動制御
+  let mvF=false,mvB=false,mvL=false,mvR=false;
+  const hold = (el,on,off)=>{
+    el.addEventListener('pointerdown', on);
+    el.addEventListener('pointerup', off);
+    el.addEventListener('pointerleave', off);
+    el.addEventListener('touchend', off, {passive:true});
+  };
+  hold(document.getElementById('btnF'), ()=>mvF=true, ()=>mvF=false);
+  hold(document.getElementById('btnB'), ()=>mvB=true, ()=>mvB=false);
+  hold(document.getElementById('btnL'), ()=>mvL=true, ()=>mvL=false);
+  hold(document.getElementById('btnR'), ()=>mvR=true, ()=>mvR=false);
+
+  const clock = new THREE.Clock();
+
+  renderer.setAnimationLoop((t, frame)=>{
+    const dt = clock.getDelta();
+
+    // 初回にヒットテストを取得
+    const session = renderer.xr.getSession();
+    if (session && !hitSourceRequested) {
+      session.requestReferenceSpace('viewer').then(refSpace=>{
+        session.requestHitTestSource({space:refSpace}).then(src=>{
+          hitSource = src;
+        });
+      });
+      session.addEventListener('end', ()=>{
+        hitSourceRequested = false;
+        hitSource = null;
+      });
+      hitSourceRequested = true;
+    }
+
+    // 毎フレーム床を探す
+    if (frame && hitSource) {
+      const refSpace = renderer.xr.getReferenceSpace();
+      const hits = frame.getHitTestResults(hitSource);
+      if (hits.length) {
+        const hit = hits[0];
+        const pose = hit.getPose(refSpace);
+        reticle.visible = true;
+        reticle.matrix.fromArray(pose.transform.matrix);
+
+        // タップで列車をその位置に置く
+        renderer.domElement.onclick = ()=>{
+          if (train) {
+            train.visible = true;
+            train.position.set(pose.transform.position.x, pose.transform.position.y, pose.transform.position.z);
+            train.quaternion.set(
+              pose.transform.orientation.x,
+              pose.transform.orientation.y,
+              pose.transform.orientation.z,
+              pose.transform.orientation.w
+            );
+          }
+        };
+
+        msgEl.style.display = 'none';
+      } else {
+        reticle.visible = false;
+        msgEl.style.display = 'block';
+        msgEl.textContent = '床を探しています…';
+      }
+    }
+
+    // 列車の移動
+    if (train && train.visible) {
+      if (mvF) train.translateZ(-1.2 * dt);
+      if (mvB) train.translateZ( 1.2 * dt);
+      if (mvL) train.rotateY( 1.5 * dt);
+      if (mvR) train.rotateY(-1.5 * dt);
+    }
+
+    renderer.render(scene, camera);
+  });
+
+  addEventListener('resize', ()=>{
+    renderer.setSize(innerWidth, innerHeight);
+  });
+}
+
+/* =========================================================
+   iOS用 AR.js ルート
+   ========================================================= */
+async function startMarkerAR(){
+  // iOSは動的ロードだとこけることがあるので、この順番で読む
+  const s1 = document.createElement('script');
+  s1.src = 'https://aframe.io/releases/1.4.2/aframe.min.js';
+  document.head.appendChild(s1);
+  await new Promise(r=>s1.onload=r);
+
+  const s2 = document.createElement('script');
+  s2.src = 'https://cdn.jsdelivr.net/gh/AR-js-org/AR.js/aframe/build/aframe-ar.js';
+  document.head.appendChild(s2);
+  await new Promise(r=>s2.onload=r);
+
+  // A-FrameシーンをDOMに挿入
+  document.body.insertAdjacentHTML('beforeend', `
+    <a-scene
+      embedded
+      vr-mode-ui="enabled:false"
+      renderer="alpha:true; colorManagement:true"
+      arjs="sourceType: webcam; debugUIEnabled:false;">
+      <a-assets>
+        <a-asset-item id="trainModel" src="AR-Train_Nagai.glb"></a-asset-item>
+      </a-assets>
+
+      <a-marker type="pattern" url="pattern-hiro.patt">
+        <a-entity id="trainRig">
+          <a-gltf-model src="#trainModel" scale="1 1 1" position="0 0 0"></a-gltf-model>
+        </a-entity>
+      </a-marker>
+
+      <a-entity camera></a-entity>
+    </a-scene>
+  `);
+
+  // 下のボタンで rig を動かせるようにする
+  uiEl.style.display = 'flex';
+  msgEl.textContent = 'マーカーをカメラに映してください';
+
+  const rigMove = {F:false,B:false,L:false,R:false};
+  const hold = (id,on,off)=>{
+    const el = document.getElementById(id);
+    el.addEventListener('pointerdown', on);
+    el.addEventListener('pointerup', off);
+    el.addEventListener('pointerleave', off);
+    el.addEventListener('touchend', off, {passive:true});
+  };
+  hold('btnF', ()=>rigMove.F=true, ()=>rigMove.F=false);
+  hold('btnB', ()=>rigMove.B=true, ()=>rigMove.B=false);
+  hold('btnL', ()=>rigMove.L=true, ()=>rigMove.L=false);
+  hold('btnR', ()=>rigMove.R=true, ()=>rigMove.R=false);
+
+  function loop(){
+    const rig = document.getElementById('trainRig');
+    if (rig && rig.object3D){
+      if (rigMove.F) rig.object3D.translateZ(-0.02);
+      if (rigMove.B) rig.object3D.translateZ( 0.02);
+      if (rigMove.L) rig.object3D.rotation.y += 0.02;
+      if (rigMove.R) rig.object3D.rotation.y -= 0.02;
+    }
+    requestAnimationFrame(loop);
+  }
+  loop();
+}
+</script>
 </body>
-<script type="module" src="main.js"></script>
 </html>
