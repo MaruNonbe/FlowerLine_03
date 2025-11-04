@@ -1,79 +1,217 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ja">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>Flower Liner WebAR</title>
-<style>
-  html, body {
-    margin: 0;
-    height: 100%;
-    background: #000;
-    overflow: hidden;
-    touch-action: manipulation; /* タップを有効化 */
-    -webkit-user-select: none;
-  }
+  <meta charset="utf-8" />
+  <title>Flower Liner WebAR</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <style>
+    html,body{
+      margin:0;height:100%;background:#000;overflow:hidden;
+      font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+    }
+    /* 起動画面 */
+    #startScreen{
+      position:fixed;inset:0;
+      display:flex;flex-direction:column;gap:10px;
+      align-items:center;justify-content:center;
+      background:rgba(0,0,0,.9);
+      color:#fff;
+      z-index:9999;
+      text-align:center;
+    }
+    #startBtn{
+      background:#29b6f6;color:#012;
+      padding:12px 24px;border:none;border-radius:14px;
+      font-size:18px;font-weight:600;
+      touch-action:manipulation;
+    }
+    #startBtn:active{background:#0288d1;color:#fff;}
 
-  #startScreen {
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.9);
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    z-index: 9999;
-    text-align: center;
-  }
+    /* カメラ映像 */
+    #cam{
+      position:fixed;inset:0;
+      width:100%;height:100%;
+      object-fit:cover;
+      display:none;
+      background:#000;
+    }
 
-  #startBtn {
-    background: #29b6f6;
-    color: #012;
-    border: none;
-    border-radius: 12px;
-    font-size: 20px;
-    font-weight: bold;
-    padding: 14px 28px;
-    cursor: pointer;
-    z-index: 10000;
-    touch-action: manipulation;
-    -webkit-tap-highlight-color: transparent;
-  }
+    /* モデル位置をいじるUI */
+    #ui{
+      position:fixed;left:0;right:0;bottom:0;
+      display:none;gap:6px;flex-wrap:wrap;justify-content:center;
+      background:rgba(0,0,0,.35);padding:10px;
+      z-index:30;
+    }
+    .btn{
+      padding:6px 12px;
+      background:rgba(255,255,255,.9);
+      border:none;border-radius:10px;
+      font-size:13px;
+      touch-action:manipulation;
+    }
 
-  #startBtn:active {
-    background: #0288d1;
-    color: #fff;
-  }
-
-  #info {
-    color: #ccc;
-    margin-top: 10px;
-    font-size: 14px;
-  }
-</style>
+    /* 進捗表示 */
+    #status{
+      position:fixed;top:8px;left:50%;transform:translateX(-50%);
+      background:rgba(0,0,0,.4);color:#fff;
+      padding:4px 8px;border-radius:8px;
+      font-size:12px;z-index:20;
+      display:none;
+    }
+  </style>
 </head>
-
 <body>
+  <!-- 起動前 -->
   <div id="startScreen">
     <h1>フラワー長井線 WebAR</h1>
     <button id="startBtn" ontouchstart="">開始する</button>
-    <p id="info">タップして体験を開始してください</p>
+    <p style="opacity:.7;font-size:13px">タップするとカメラを起動します</p>
   </div>
 
-  <script type="module">
-    // iOS Safariのクリック制限を回避するために、touchstartも登録
-    const startBtn = document.getElementById("startBtn");
-    const startScreen = document.getElementById("startScreen");
+  <!-- カメラ -->
+  <video id="cam" autoplay playsinline muted></video>
 
-    function onStart() {
-      alert("✅ ボタンが反応しました！");
-      startScreen.remove();
-      // 次にAR処理やカメラ起動処理をここに追加可能
+  <!-- 情報表示 -->
+  <div id="status">読み込み中…</div>
+
+  <!-- 位置調整 -->
+  <div id="ui">
+    <button class="btn" data-act="up">↑</button>
+    <button class="btn" data-act="down">↓</button>
+    <button class="btn" data-act="left">←</button>
+    <button class="btn" data-act="right">→</button>
+    <button class="btn" data-act="near">手前</button>
+    <button class="btn" data-act="far">奥</button>
+    <button class="btn" data-act="rotL">⟲</button>
+    <button class="btn" data-act="rotR">⟳</button>
+  </div>
+
+  <!-- three.jsまわり -->
+  <script type="module">
+    import * as THREE from "https://unpkg.com/three@0.159.0/build/three.module.js";
+    import { GLTFLoader } from "https://unpkg.com/three@0.159.0/examples/jsm/loaders/GLTFLoader.js";
+
+    const startScreen = document.getElementById('startScreen');
+    const startBtn    = document.getElementById('startBtn');
+    const video       = document.getElementById('cam');
+    const ui          = document.getElementById('ui');
+    const statusEl    = document.getElementById('status');
+
+    startBtn.addEventListener('click', startApp, {passive:false});
+    startBtn.addEventListener('touchstart', startApp, {passive:false});
+
+    async function startApp(e){
+      e.preventDefault();
+      startScreen.style.display = 'none';
+      statusEl.style.display = 'block';
+      statusEl.textContent = 'カメラ起動中…';
+
+      // 1) カメラ起動
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+        video.srcObject = stream;
+        video.style.display = 'block';
+      } catch(err){
+        alert('カメラを開けませんでした: ' + err.message);
+      }
+
+      // 2) three.js 初期化
+      const renderer = new THREE.WebGLRenderer({alpha:true, antialias:true});
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.domElement.style.position = 'fixed';
+      renderer.domElement.style.inset = 0;
+      renderer.domElement.style.pointerEvents = 'none'; // 下のボタンを押せるように
+      document.body.appendChild(renderer.domElement);
+
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.01, 100);
+      camera.position.set(0,0,5);
+
+      const light = new THREE.HemisphereLight(0xffffff, 0x444444, 1);
+      scene.add(light);
+
+      // 3) GLB読み込み
+      statusEl.textContent = '車両モデル読み込み中…';
+      const loader = new GLTFLoader();
+      let train = null;
+      loader.load(
+        './AR-Train_Nagai.glb',          // ← index.html と同じ場所に置いてください
+        (gltf) => {
+          train = gltf.scene;
+          scene.add(train);
+
+          // 画面に収まるように自動スケール
+          fitModelToScreen(train, camera, renderer, 0.8);
+
+          // 初期位置を少し下げると見やすい
+          train.position.y -= 0.3;
+          statusEl.style.display = 'none';
+        },
+        undefined,
+        (err) => {
+          console.error(err);
+          statusEl.textContent = 'モデルを読み込めませんでした';
+        }
+      );
+
+      // 4) UIで動かす
+      ui.style.display = 'flex';
+      const state = {x:0, y:-0.3, z:0, rot:0};
+      ui.addEventListener('click', (ev)=>{
+        const act = ev.target.dataset.act;
+        if(!act || !train) return;
+        const step = 0.1;
+        switch(act){
+          case 'up': state.y += step; break;
+          case 'down': state.y -= step; break;
+          case 'left': state.x -= step; break;
+          case 'right': state.x += step; break;
+          case 'near': state.z += step; break;
+          case 'far': state.z -= step; break;
+          case 'rotL': state.rot += 0.1; break;
+          case 'rotR': state.rot -= 0.1; break;
+        }
+      });
+
+      // 5) 描画ループ
+      function animate(){
+        requestAnimationFrame(animate);
+        if(train){
+          train.position.set(state.x, state.y, state.z);
+          train.rotation.y = state.rot;
+        }
+        renderer.render(scene, camera);
+      }
+      animate();
+
+      // 6) リサイズ対応
+      window.addEventListener('resize', ()=>{
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        camera.aspect = window.innerWidth/window.innerHeight;
+        camera.updateProjectionMatrix();
+      });
     }
 
-    // 両方登録（iOS対策）
-    startBtn.addEventListener("click", onStart, { passive: false });
-    startBtn.addEventListener("touchstart", onStart, { passive: false });
+    // モデルを画面に収める関数
+    function fitModelToScreen(model, camera, renderer, margin=0.9){
+      const box = new THREE.Box3().setFromObject(model);
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      const center = new THREE.Vector3();
+      box.getCenter(center);
+      model.position.sub(center);           // モデルの中心を(0,0,0)へ
+
+      const distance = 2;
+      camera.position.set(0,0,distance);
+      camera.lookAt(0,0,0);
+
+      const fov = camera.fov * (Math.PI/180);
+      const visibleHeight = 2 * Math.tan(fov/2) * distance;
+      const scale = (visibleHeight * margin) / size.y;
+      model.scale.set(scale, scale, scale);
+    }
   </script>
 </body>
 </html>
