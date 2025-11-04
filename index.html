@@ -36,7 +36,8 @@
       background:rgba(0,0,0,.5);
       padding:6px 10px;border-radius:10px;
       font-size:13px;z-index:20;
-      display:none;
+      display:none;white-space:pre-line;
+      max-width:90vw;
     }
   </style>
 </head>
@@ -50,89 +51,103 @@
   <video id="cam" autoplay playsinline muted></video>
   <div id="status">待機中…</div>
 
-  <script type="module">
-    import * as THREE from 'https://unpkg.com/three@0.159.0/build/three.module.js';
-    import { GLTFLoader } from 'https://unpkg.com/three@0.159.0/examples/jsm/loaders/GLTFLoader.js';
-
+  <!-- ここはふつうの script。まずは確実に動くようにする -->
+  <script>
     const startScreen = document.getElementById('startScreen');
-    const startBtn = document.getElementById('startBtn');
-    const videoEl = document.getElementById('cam');
-    const statusEl = document.getElementById('status');
+    const startBtn    = document.getElementById('startBtn');
+    const videoEl     = document.getElementById('cam');
+    const statusEl    = document.getElementById('status');
 
     startBtn.addEventListener('click', startApp);
     startBtn.addEventListener('touchstart', startApp);
 
-    async function startApp(e){
-      e.preventDefault();
+    async function startApp(ev){
+      ev.preventDefault();
       startScreen.style.display = 'none';
       statusEl.style.display = 'block';
       statusEl.textContent = 'カメラ起動中…';
 
-      // カメラ取得
+      // ①カメラを先に開く（ここまでは前回成功してる）
       try{
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }});
         videoEl.srcObject = stream;
         videoEl.style.display = 'block';
-        statusEl.textContent = 'カメラOK ✅\nモデルを読み込みます…';
+        statusEl.textContent = 'カメラOK ✅\n3Dライブラリを読み込み中…';
       }catch(err){
         statusEl.textContent = 'カメラエラー ❌\n' + err.name + ': ' + err.message;
         return;
       }
 
-      // Three.js シーン構築
-      const renderer = new THREE.WebGLRenderer({alpha:true, antialias:true});
-      renderer.setSize(window.innerWidth, window.innerHeight);
-      renderer.setPixelRatio(window.devicePixelRatio);
-      renderer.domElement.style.position = 'fixed';
-      renderer.domElement.style.inset = 0;
-      document.body.appendChild(renderer.domElement);
+      // ②ボタンを押した後で three.js を動的ロード
+      try {
+        const THREE      = await import('https://unpkg.com/three@0.159.0/build/three.module.js');
+        const gltfModule = await import('https://unpkg.com/three@0.159.0/examples/jsm/loaders/GLTFLoader.js');
 
-      const scene = new THREE.Scene();
-      const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.01, 100);
-      camera.position.set(0,0,3);
-      const light = new THREE.HemisphereLight(0xffffff,0x444444,1.2);
-      scene.add(light);
+        statusEl.textContent = '3DライブラリOK ✅\nモデルを読み込み中…';
 
-      // GLB 読み込み
-      const loader = new GLTFLoader();
-      loader.load('./AR-Train_Nagai.glb',
-        gltf=>{
-          const model = gltf.scene;
-          scene.add(model);
-          fitModelToView(model,camera);
-          statusEl.textContent = 'モデル読み込み完了 ✅';
-          animate();
+        // ③three.js セットアップ
+        const renderer = new THREE.WebGLRenderer({alpha:true, antialias:true});
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.domElement.style.position = 'fixed';
+        renderer.domElement.style.inset = 0;
+        renderer.domElement.style.pointerEvents = 'none'; // 画面タップを殺さない
+        document.body.appendChild(renderer.domElement);
 
-          function animate(){
-            requestAnimationFrame(animate);
-            model.rotation.y += 0.005;
-            renderer.render(scene,camera);
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.01, 100);
+        camera.position.set(0,0,3);
+        const light = new THREE.HemisphereLight(0xffffff,0x444444,1.2);
+        scene.add(light);
+
+        const loader = new gltfModule.GLTFLoader();
+        loader.load(
+          './AR-Train_Nagai.glb',   // ←同じフォルダに置いてください
+          (gltf)=>{
+            const model = gltf.scene;
+            scene.add(model);
+            fitModel(model, camera);
+            statusEl.textContent = 'モデル読み込み完了 ✅';
+            animate();
+            function animate(){
+              requestAnimationFrame(animate);
+              model.rotation.y += 0.004;
+              renderer.render(scene, camera);
+            }
+          },
+          undefined,
+          (err)=>{
+            statusEl.textContent = 'モデル読み込みエラー ❌\n' + err.message;
           }
-        },
-        xhr=>{
-          statusEl.textContent = `読み込み中... ${ (xhr.loaded/xhr.total*100).toFixed(0) }%`;
-        },
-        err=>{
-          statusEl.textContent = 'モデル読み込みエラー ❌\n' + err.message;
+        );
+
+        // 画面に収める関数
+        function fitModel(model, camera){
+          const box = new THREE.Box3().setFromObject(model);
+          const size = new THREE.Vector3();
+          box.getSize(size);
+          const center = new THREE.Vector3();
+          box.getCenter(center);
+          model.position.sub(center);
+          const maxDim = Math.max(size.x, size.y, size.z);
+          const fov = camera.fov * (Math.PI/180);
+          const dist = maxDim / (2 * Math.tan(fov/2));
+          camera.position.set(0,0,dist*1.2);
+          camera.lookAt(0,0,0);
+          const scale = 1 / maxDim;
+          model.scale.setScalar(scale * 2);
         }
-      );
 
-      function fitModelToView(model,camera){
-        const box = new THREE.Box3().setFromObject(model);
-        const size = new THREE.Vector3();
-        box.getSize(size);
-        const center = new THREE.Vector3();
-        box.getCenter(center);
-        model.position.sub(center);
+        // リサイズ対応
+        window.addEventListener('resize', ()=>{
+          renderer.setSize(window.innerWidth, window.innerHeight);
+          camera.aspect = window.innerWidth / window.innerHeight;
+          camera.updateProjectionMatrix();
+        });
 
-        const maxDim = Math.max(size.x, size.y, size.z);
-        const fov = camera.fov * (Math.PI / 180);
-        let dist = maxDim / (2 * Math.tan(fov / 2));
-        camera.position.set(0, 0, dist * 1.2);
-        camera.lookAt(0, 0, 0);
-
-        const scale = 1 / maxDim;
-        model.scale.setScalar(scale * 2);
+      } catch (e) {
+        // three.js のimportで失敗したらここに来る
+        statusEl.textContent = 'three.js読み込み失敗 ❌\n' + e.message;
       }
     }
   </script>
