@@ -10,14 +10,12 @@
       font-family:system-ui,-apple-system,sans-serif;
       overflow:hidden;
     }
-    /* 起動画面 */
     #startScreen{
       position:fixed;inset:0;
       display:flex;flex-direction:column;gap:10px;
       align-items:center;justify-content:center;
       background:rgba(0,0,0,.9);
-      z-index:10;
-      text-align:center;
+      z-index:20;text-align:center;
     }
     #startBtn{
       background:#29b6f6;color:#012;
@@ -27,72 +25,92 @@
       touch-action:manipulation;
     }
     #startBtn:active{background:#0288d1;color:#fff;}
-    /* カメラ映像 */
     #cam{
       position:fixed;inset:0;width:100%;height:100%;
       object-fit:cover;display:none;background:#000;
     }
-    /* 状態表示 */
     #status{
-      position:fixed;top:10px;left:50%;transform:translateX(-50%);
+      position:fixed;top:10px;left:50%;
+      transform:translateX(-50%);
       background:rgba(0,0,0,.55);
       padding:6px 10px;border-radius:10px;
-      font-size:13px;z-index:20;display:none;
+      font-size:13px;z-index:30;display:none;
       white-space:pre-line;max-width:90vw;
     }
+    /* 操作ボタン */
+    #controls{
+      position:fixed;bottom:12px;left:50%;transform:translateX(-50%);
+      display:flex;gap:6px;flex-wrap:wrap;justify-content:center;
+      z-index:30;display:none;
+    }
+    .ctrl-btn{
+      background:rgba(255,255,255,.9);color:#005;
+      border:none;border-radius:12px;
+      padding:8px 14px;font-size:14px;font-weight:600;
+      min-width:66px;text-align:center;
+      touch-action:manipulation;
+    }
+    .ctrl-btn:active{background:rgba(200,200,255,.95);}
   </style>
 
-  <!-- ★ ローカルに置いた three.js r146 を読み込む -->
+  <!-- ローカルに置いた three.js r146 と GLTFLoader を読み込む -->
   <script src="./three.min.js"></script>
-  <!-- ★ 同じくローカルの GLTFLoader を読み込む -->
   <script src="./GLTFLoader.js"></script>
 </head>
 <body>
-  <!-- 起動前 -->
   <div id="startScreen">
     <h1>フラワー長井線 WebAR</h1>
     <button id="startBtn">開始する</button>
-    <p style="opacity:.7;font-size:13px">タップ後、カメラと3Dを読み込みます</p>
+    <p style="opacity:.7;font-size:13px">Androidなら床に置けます。iPhoneは固定表示です。</p>
   </div>
 
-  <!-- カメラ -->
+  <!-- iOS用カメラ映像 -->
   <video id="cam" autoplay playsinline muted></video>
 
-  <!-- ステータス表示 -->
   <div id="status">待機中…</div>
+
+  <!-- 操作用ボタン -->
+  <div id="controls">
+    <button class="ctrl-btn" data-act="forward">前進</button>
+    <button class="ctrl-btn" data-act="back">後進</button>
+    <button class="ctrl-btn" data-act="left">左折</button>
+    <button class="ctrl-btn" data-act="right">右折</button>
+    <button class="ctrl-btn" data-act="stop">停止</button>
+  </div>
 
   <script>
     const startScreen = document.getElementById('startScreen');
     const startBtn    = document.getElementById('startBtn');
     const videoEl     = document.getElementById('cam');
     const statusEl    = document.getElementById('status');
+    const controlsEl  = document.getElementById('controls');
+    const ctrlButtons = Array.from(document.querySelectorAll('.ctrl-btn'));
 
-    // iOSでも確実に拾えるように両方つける
+    let renderer, scene, camera;
+    let model = null;
+    let moveState = "stop";   // "forward" | "back" | "left" | "right" | "stop"
+    let webxrSupported = false;
+    let xrSession = null;
+    let xrRefSpace = null;
+    let xrHitTestSource = null;
+    let placed = false;
+
+    // WebXRが使えるかどうか事前チェック（対応端末のみtrue）
+    if (navigator.xr && navigator.xr.isSessionSupported) {
+      navigator.xr.isSessionSupported('immersive-ar').then(supported => {
+        webxrSupported = supported;
+      });
+    }
+
     startBtn.addEventListener('click', startApp);
     startBtn.addEventListener('touchstart', startApp);
 
     async function startApp(e){
       e.preventDefault();
-
-      // 起動画面を消す
       startScreen.style.display = 'none';
       statusEl.style.display = 'block';
-      statusEl.textContent = 'カメラ起動中…';
 
-      // ① カメラ起動
-      try{
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'environment' }
-        });
-        videoEl.srcObject = stream;
-        videoEl.style.display = 'block';
-        statusEl.textContent = 'カメラOK ✅\n3D表示を準備中…';
-      }catch(err){
-        statusEl.textContent = 'カメラエラー ❌\n' + err.name + ': ' + err.message;
-        return;
-      }
-
-      // ② three.js と GLTFLoader が読み込まれているか確認
+      // three.js 読み込み確認
       if (typeof THREE === 'undefined') {
         statusEl.textContent = 'three.js が読み込めませんでした ❌';
         return;
@@ -102,89 +120,224 @@
         return;
       }
 
-      // ③ three.js 初期化
-      const renderer = new THREE.WebGLRenderer({ alpha:true, antialias:true });
+      // WebXRが使えるならXR開始、なければiOSフォールバック
+      if (webxrSupported) {
+        statusEl.textContent = 'ARセッション開始中…床を写してください';
+        startWebXR();
+      } else {
+        statusEl.textContent = 'カメラ起動中…（iOS簡易モード）';
+        startFallbackCamera();
+      }
+    }
+
+    /* =========================
+       1. WebXRモード（Android）
+       ========================= */
+    async function startWebXR(){
+      // Three.js 共通の初期化
+      renderer = new THREE.WebGLRenderer({alpha:true, antialias:true});
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.xr.enabled = true;
+      document.body.appendChild(renderer.domElement);
+
+      scene = new THREE.Scene();
+      camera = new THREE.PerspectiveCamera();
+
+      // 光
+      const light = new THREE.HemisphereLight(0xffffff, 0x444444, 1.2);
+      scene.add(light);
+
+      // モデルを先に読み込む（非表示にしておく）
+      model = await loadTrainModel();
+      model.visible = false;
+      scene.add(model);
+
+      // UIは表示しておく（床置き後に効く）
+      controlsEl.style.display = 'flex';
+
+      // XRセッション開始
+      xrSession = await navigator.xr.requestSession('immersive-ar', {
+        requiredFeatures: ['hit-test', 'local-floor']
+      });
+      xrSession.addEventListener('end', () => {
+        statusEl.textContent = 'ARセッション終了';
+      });
+
+      // three.js にXRセッションを渡す
+      renderer.xr.setSession(xrSession);
+
+      // リファレンス空間
+      xrRefSpace = await xrSession.requestReferenceSpace('local');
+
+      // ヒットテストの準備
+      const viewerSpace = await xrSession.requestReferenceSpace('viewer');
+      xrHitTestSource = await xrSession.requestHitTestSource({ space: viewerSpace });
+
+      // フレームループ
+      renderer.setAnimationLoop(onXRFrame);
+    }
+
+    function onXRFrame(time, frame){
+      const session = frame.session;
+      const pose = frame.getViewerPose(xrRefSpace);
+      if (!pose) return;
+
+      // まだ置いてないときはヒットテストする
+      if (!placed && xrHitTestSource) {
+        const hitResults = frame.getHitTestResults(xrHitTestSource);
+        if (hitResults.length > 0) {
+          const hit = hitResults[0];
+          const hitPose = hit.getPose(xrRefSpace);
+          if (hitPose && model) {
+            model.visible = true;
+            model.position.set(hitPose.transform.position.x, hitPose.transform.position.y, hitPose.transform.position.z);
+            const q = hitPose.transform.orientation;
+            model.quaternion.set(q.x, q.y, q.z, q.w);
+            statusEl.textContent = 'モデルを置きました ✅';
+            placed = true;
+          }
+        } else {
+          statusEl.textContent = '床を写してください…';
+        }
+      }
+
+      // 置いたあとは移動処理
+      if (placed && model) {
+        moveModel(model, moveState);
+      }
+
+      renderer.render(scene, camera);
+    }
+
+    /* =========================
+       2. iOSフォールバック（カメラ＋固定表示）
+       ========================= */
+    async function startFallbackCamera(){
+      // カメラを開く
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        videoEl.srcObject = stream;
+        videoEl.style.display = 'block';
+        statusEl.textContent = 'カメラOK ✅\nモデルを読み込み中…';
+      } catch (err) {
+        statusEl.textContent = 'カメラエラー ❌\n' + err.message;
+        return;
+      }
+
+      // three.js 初期化（2Dカメラの上に重ねるだけ）
+      renderer = new THREE.WebGLRenderer({alpha:true, antialias:true});
       renderer.setSize(window.innerWidth, window.innerHeight);
       renderer.setPixelRatio(window.devicePixelRatio);
       renderer.domElement.style.position = 'fixed';
       renderer.domElement.style.inset = 0;
-      // 画面上のタップを邪魔しない
       renderer.domElement.style.pointerEvents = 'none';
       document.body.appendChild(renderer.domElement);
 
-      const scene = new THREE.Scene();
-      const camera = new THREE.PerspectiveCamera(
-        45,
-        window.innerWidth / window.innerHeight,
-        0.01,
-        100
-      );
-      camera.position.set(0, 0, 3);
-
-      // 簡単なライト
+      scene = new THREE.Scene();
+      camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.01, 100);
+      camera.position.set(0,0,3);
       const light = new THREE.HemisphereLight(0xffffff, 0x444444, 1.2);
       scene.add(light);
 
-      // ④ GLBモデル読み込み
-      statusEl.textContent = 'モデル読み込み中…';
+      model = await loadTrainModel();
+      scene.add(model);
 
-      const loader = new THREE.GLTFLoader();
-      loader.load(
-        // ★ index.html と同じ場所に AR-Train_Nagai.glb を置く
-        './AR-Train_Nagai.glb',
-        function(gltf){
-          const model = gltf.scene;
-          scene.add(model);
+      // 画面に収まるよう調整
+      fitModelToView(model, camera);
 
-          // 画面に収まるように調整
-          fitModelToView(model, camera);
+      statusEl.textContent = 'モデル読み込み完了 ✅';
+      controlsEl.style.display = 'flex';
 
-          statusEl.textContent = 'モデル読み込み完了 ✅';
+      // アニメーションループ
+      (function animate(){
+        requestAnimationFrame(animate);
+        // フォールバック時も移動できるように
+        if (model) moveModel(model, moveState);
+        renderer.render(scene, camera);
+      })();
 
-          // 回すだけの簡単な描画ループ
-          (function animate(){
-            requestAnimationFrame(animate);
-            model.rotation.y += 0.004;
-            renderer.render(scene, camera);
-          })();
-        },
-        undefined,
-        function(error){
-          console.error(error);
-          statusEl.textContent = 'モデル読み込みエラー ❌\n' + error.message;
-        }
-      );
-
-      // ⑤ リサイズ対応
-      window.addEventListener('resize', function(){
+      // リサイズ対応
+      window.addEventListener('resize', ()=>{
         renderer.setSize(window.innerWidth, window.innerHeight);
-        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.aspect = window.innerWidth/window.innerHeight;
         camera.updateProjectionMatrix();
       });
     }
 
-    // モデルを画面にいい感じに収める関数
+    /* =========================
+       共通：モデル読み込み・移動
+       ========================= */
+    function loadTrainModel(){
+      return new Promise((resolve, reject)=>{
+        const loader = new THREE.GLTFLoader();
+        loader.load(
+          './AR-Train_Nagai.glb',
+          gltf => {
+            const m = gltf.scene;
+            // いったん原点に置く
+            m.position.set(0,0,0);
+            resolve(m);
+          },
+          undefined,
+          err => reject(err)
+        );
+      });
+    }
+
+    // 画面に収める（フォールバック用）
     function fitModelToView(model, camera){
       const box = new THREE.Box3().setFromObject(model);
       const size = new THREE.Vector3();
       box.getSize(size);
       const center = new THREE.Vector3();
       box.getCenter(center);
-
-      // モデルの中心を(0,0,0)に
       model.position.sub(center);
-
       const maxDim = Math.max(size.x, size.y, size.z);
-      const fov = camera.fov * (Math.PI / 180);
-      const dist = maxDim / (2 * Math.tan(fov / 2));
-
-      camera.position.set(0, 0, dist * 1.2);
-      camera.lookAt(0, 0, 0);
-
-      // 大きすぎるときのスケール調整
+      const fov = camera.fov * (Math.PI/180);
+      const dist = maxDim / (2 * Math.tan(fov/2));
+      camera.position.set(0,0,dist*1.2);
+      camera.lookAt(0,0,0);
       const scale = 1 / maxDim;
-      model.scale.setScalar(scale * 2); // ちょっと大きめに
+      model.scale.setScalar(scale * 2);
     }
+
+    // 移動ロジック（列車のローカルZを前後、Y回転で左右）
+    function moveModel(target, state){
+      const speed = 0.01;      // 移動量
+      const rotSpeed = 0.02;   // 回転量
+      switch(state){
+        case 'forward':
+          target.translateZ(-speed); // three.jsは -Z が前
+          break;
+        case 'back':
+          target.translateZ(speed);
+          break;
+        case 'left':
+          target.rotation.y += rotSpeed;
+          break;
+        case 'right':
+          target.rotation.y -= rotSpeed;
+          break;
+        case 'stop':
+        default:
+          // 何もしない
+          break;
+      }
+    }
+
+    // ボタンクリックで moveState を変更
+    ctrlButtons.forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        moveState = btn.dataset.act;
+        statusEl.textContent = '操作: ' + btn.textContent;
+      });
+      btn.addEventListener('touchstart', ()=>{
+        moveState = btn.dataset.act;
+        statusEl.textContent = '操作: ' + btn.textContent;
+      });
+    });
+
   </script>
 </body>
 </html>
