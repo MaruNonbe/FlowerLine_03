@@ -2,294 +2,77 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8" />
-  <title>Flower Liner WebAR (dual)</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Flower Liner WebAR (Safe Dual Mode)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <style>
     html,body{margin:0;height:100%;overflow:hidden;background:#000;font-family:system-ui,-apple-system;}
-    #gate{
-      position:fixed;inset:0;background:rgba(0,0,0,.85);color:#fff;
-      display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:50;
-    }
-    #gate button{padding:12px 16px;border:none;border-radius:14px;background:#29b6f6;color:#012;font-size:16px;font-weight:600}
-    #mode{position:fixed;top:10px;left:10px;background:rgba(0,0,0,.4);color:#fff;padding:4px 8px;border-radius:10px;font-size:12px;z-index:30}
-    #msg{position:fixed;top:10px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.4);color:#fff;padding:5px 10px;border-radius:10px;z-index:30;font-size:13px}
-    /* iOS 簡易版のボタン */
-    #ios-ui{
+    #startScreen{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:#000;color:#fff;z-index:50;}
+    button{padding:10px 18px;border:none;border-radius:14px;background:#29b6f6;color:#012;font-size:16px;font-weight:600;}
+    #ios-cam{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;display:none;background:#000;}
+    #ui{
       position:fixed;left:0;right:0;bottom:0;
       display:none;gap:6px;flex-wrap:wrap;justify-content:center;
-      background:rgba(0,0,0,.35);padding:10px;z-index:40;
+      background:rgba(0,0,0,.35);padding:10px;z-index:20;
     }
-    .btn{padding:6px 10px;border:none;border-radius:10px;background:rgba(255,255,255,.9);font-size:13px}
-    /* Android/WebXR版のボタン */
-    #xr-ui{
-      position:fixed;left:0;right:0;bottom:0;
-      display:none;gap:10px;justify-content:center;flex-wrap:wrap;
-      padding:12px 12px 16px;z-index:40;
-    }
-    #xr-ui .btn{min-width:80px}
-    /* iOSのカメラ映像 */
-    #ios-cam{
-      position:fixed;inset:0;width:100%;height:100%;object-fit:cover;background:#000;display:none;
-    }
+    .btn{padding:6px 10px;border:none;border-radius:10px;background:rgba(255,255,255,.9);font-size:13px;}
   </style>
 </head>
 <body>
-  <div id="gate">
-    <div>🔊 はじめにタップしてカメラ・ARを開始します</div>
+  <div id="startScreen">
+    <h1>フラワー長井線 WebAR</h1>
     <button id="startBtn">開始する</button>
-    <div style="opacity:.7;font-size:13px">Androidは平面検出AR、iOSは画面上で位置調整する簡易ARになります。</div>
+    <p>iPhoneはカメラ背景・Androidは床検出で動作します。</p>
   </div>
-  <div id="mode">mode: --</div>
-  <div id="msg">準備中…</div>
-
-  <!-- iOSカメラ背景 -->
   <video id="ios-cam" autoplay playsinline muted></video>
-
-  <!-- iOS用 UI -->
-  <div id="ios-ui">
-    <button class="btn" data-act="up">↑ 上へ</button>
-    <button class="btn" data-act="down">↓ 下へ</button>
-    <button class="btn" data-act="left">← 左へ</button>
-    <button class="btn" data-act="right">→ 右へ</button>
+  <div id="ui">
+    <button class="btn" data-act="up">↑</button>
+    <button class="btn" data-act="down">↓</button>
+    <button class="btn" data-act="left">←</button>
+    <button class="btn" data-act="right">→</button>
     <button class="btn" data-act="near">手前</button>
     <button class="btn" data-act="far">奥</button>
-    <button class="btn" data-act="bigger">＋大</button>
-    <button class="btn" data-act="smaller">－小</button>
     <button class="btn" data-act="rotL">⟲</button>
     <button class="btn" data-act="rotR">⟳</button>
   </div>
 
-  <!-- Android/WebXR用 UI -->
-  <div id="xr-ui">
-    <button class="btn" id="btnF">前進</button>
-    <button class="btn" id="btnB">後進</button>
-    <button class="btn" id="btnL">左折</button>
-    <button class="btn" id="btnR">右折</button>
-  </div>
-
 <script type="module">
+import * as THREE from "https://unpkg.com/three@0.159.0/build/three.module.js";
+import {GLTFLoader} from "https://unpkg.com/three@0.159.0/examples/jsm/loaders/GLTFLoader.js";
+import {ARButton} from "https://unpkg.com/three@0.159.0/examples/jsm/webxr/ARButton.js";
+
 const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
 const startBtn = document.getElementById('startBtn');
-const gateEl = document.getElementById('gate');
-const modeEl = document.getElementById('mode');
-const msgEl = document.getElementById('msg');
+startBtn.addEventListener('click', ()=>{ document.getElementById('startScreen').remove(); isIOS ? startIOS() : startXR(); });
 
-startBtn.addEventListener('click', () => {
-  gateEl.style.display = 'none';
-  if (isIOS) {
-    modeEl.textContent = 'mode: iOS overlay';
-    startIOSOverlay();
-  } else {
-    modeEl.textContent = 'mode: WebXR (hit-test)';
-    startWebXR();
-  }
-});
+/* ---------- iOSモード ---------- */
+async function startIOS(){
+  const video = document.getElementById('ios-cam');
+  const ui = document.getElementById('ui');
+  video.style.display = 'block';
+  ui.style.display = 'flex';
 
-/* ============ iOS: カメラ背景＋UIで位置調整 ============ */
-async function startIOSOverlay(){
-  const cam = document.getElementById('ios-cam');
-  const iosUI = document.getElementById('ios-ui');
-  cam.style.display = 'block';
-  iosUI.style.display = 'flex';
-
-  // カメラ起動
+  // カメラ背景
   try {
     const stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
-    cam.srcObject = stream;
-    msgEl.textContent = '位置をボタンで調整してください';
-  } catch (e) {
-    console.warn(e);
-    msgEl.textContent = 'カメラが使えませんでした';
-  }
+    video.srcObject = stream;
+  } catch(e){ alert('カメラが使用できません'); }
 
-  // three.js で透明キャンバス
-  const {default: THREE} = await import("https://unpkg.com/three@0.159.0/build/three.module.js");
-  const {GLTFLoader} = await import("https://unpkg.com/three@0.159.0/examples/jsm/loaders/GLTFLoader.js");
-
+  // Three.js 初期化
   const renderer = new THREE.WebGLRenderer({alpha:true, antialias:true});
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.setPixelRatio(window.devicePixelRatio);
-  renderer.domElement.style.position = "fixed";
-  renderer.domElement.style.inset = 0;
-  renderer.domElement.style.pointerEvents = "none";
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.domElement.style.position="fixed";
+  renderer.domElement.style.inset=0;
+  renderer.domElement.style.pointerEvents="none"; // UIが押せるように
   document.body.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.01, 100);
+  const camera = new THREE.PerspectiveCamera(45, innerWidth/innerHeight, 0.01, 100);
   camera.position.set(0,0,5);
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1));
-
-  let train = null;
-  const loader = new GLTFLoader();
-  loader.load("./AR-Train_Nagai.glb", (gltf)=>{
-    train = gltf.scene;
-    train.position.set(0, -0.5, 0);
-    train.scale.set(0.5,0.5,0.5);
-    scene.add(train);
-  }, undefined, (err)=>console.error(err));
-
-  const state = {x:0, y:-0.5, z:0, scale:0.5, rotY:0};
-
-  iosUI.addEventListener('click', (e)=>{
-    const act = e.target.dataset.act;
-    if(!act) return;
-    const step = 0.1;
-    switch(act){
-      case 'up': state.y += step; break;
-      case 'down': state.y -= step; break;
-      case 'left': state.x -= step; break;
-      case 'right': state.x += step; break;
-      case 'near': state.z += step; break;
-      case 'far': state.z -= step; break;
-      case 'bigger': state.scale *= 1.1; break;
-      case 'smaller': state.scale /= 1.1; break;
-      case 'rotL': state.rotY += 0.1; break;
-      case 'rotR': state.rotY -= 0.1; break;
-    }
-  });
-
-  function animate(){
-    requestAnimationFrame(animate);
-    if(train){
-      train.position.set(state.x, state.y, state.z);
-      train.scale.set(state.scale, state.scale, state.scale);
-      train.rotation.y = state.rotY;
-    }
-    renderer.render(scene, camera);
-  }
-  animate();
-
-  window.addEventListener('resize', ()=>{
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    camera.aspect = window.innerWidth/window.innerHeight;
-    camera.updateProjectionMatrix();
-  });
-}
-
-/* ============ Android/WebXR: 床検出して配置 ============ */
-async function startWebXR(){
-  const [{default: THREE}, {ARButton}, {GLTFLoader}] = await Promise.all([
-    import('https://unpkg.com/three@0.159.0/build/three.module.js'),
-    import('https://unpkg.com/three@0.159.0/examples/jsm/webxr/ARButton.js'),
-    import('https://unpkg.com/three@0.159.0/examples/jsm/loaders/GLTFLoader.js')
-  ]);
-
-  const renderer = new THREE.WebGLRenderer({antialias:true, alpha:true});
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.setPixelRatio(window.devicePixelRatio);
-  renderer.xr.enabled = true;
-  renderer.setClearAlpha(0);
-  document.body.appendChild(renderer.domElement);
-
-  const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera();
   scene.add(new THREE.HemisphereLight(0xffffff,0x444444,1));
 
-  const xrUI = document.getElementById('xr-ui');
-  xrUI.style.display = 'flex';
-
-  // reticle
-  const reticle = new THREE.Mesh(
-    new THREE.RingGeometry(0.08,0.12,32).rotateX(-Math.PI/2),
-    new THREE.MeshBasicMaterial({color:0x00ff99})
-  );
-  reticle.matrixAutoUpdate = false;
-  reticle.visible = false;
-  scene.add(reticle);
-
-  // ARボタン（隠す）
-  const realBtn = ARButton.createButton(renderer, {requiredFeatures:['hit-test']});
-  realBtn.style.display = 'none';
-  document.body.appendChild(realBtn);
-  realBtn.click();
-
-  // モデル
-  let train = null;
   const loader = new GLTFLoader();
-  loader.load('./AR-Train_Nagai.glb', (gltf)=>{
+  let train = null;
+  loader.load("./AR-Train_Nagai.glb", gltf=>{
     train = gltf.scene;
-    train.visible = false;
-    scene.add(train);
-  });
-
-  let hitSource = null;
-  let hitSourceRequested = false;
-
-  // UI移動
-  let mvF=false,mvB=false,mvL=false,mvR=false;
-  const hold=(id,on,off)=>{
-    const el=document.getElementById(id);
-    el.addEventListener('pointerdown', on);
-    el.addEventListener('pointerup', off);
-    el.addEventListener('pointerleave', off);
-    el.addEventListener('touchend', off, {passive:true});
-  };
-  hold('btnF', ()=>mvF=true, ()=>mvF=false);
-  hold('btnB', ()=>mvB=true, ()=>mvB=false);
-  hold('btnL', ()=>mvL=true, ()=>mvL=false);
-  hold('btnR', ()=>mvR=true, ()=>mvR=false);
-
-  const clock = new THREE.Clock();
-
-  renderer.setAnimationLoop((t, frame)=>{
-    const dt = clock.getDelta();
-
-    const session = renderer.xr.getSession();
-    if (session && !hitSourceRequested){
-      session.requestReferenceSpace('viewer').then((refSpace)=>{
-        session.requestHitTestSource({space:refSpace}).then((source)=>{
-          hitSource = source;
-        });
-      });
-      session.addEventListener('end', ()=>{
-        hitSourceRequested = false;
-        hitSource = null;
-      });
-      hitSourceRequested = true;
-    }
-
-    if (frame && hitSource){
-      const refSpace = renderer.xr.getReferenceSpace();
-      const hits = frame.getHitTestResults(hitSource);
-      if (hits.length){
-        const pose = hits[0].getPose(refSpace);
-        reticle.visible = true;
-        reticle.matrix.fromArray(pose.transform.matrix);
-        msgEl.style.display = 'none';
-
-        renderer.domElement.onclick = ()=>{
-          if (train){
-            train.visible = true;
-            train.position.set(pose.transform.position.x, pose.transform.position.y, pose.transform.position.z);
-            train.quaternion.set(
-              pose.transform.orientation.x,
-              pose.transform.orientation.y,
-              pose.transform.orientation.z,
-              pose.transform.orientation.w
-            );
-          }
-        };
-      } else {
-        reticle.visible = false;
-        msgEl.style.display = 'block';
-        msgEl.textContent = '床を探しています…';
-      }
-    }
-
-    if (train && train.visible){
-      if (mvF) train.translateZ(-1.2*dt);
-      if (mvB) train.translateZ( 1.2*dt);
-      if (mvL) train.rotateY( 1.5*dt);
-      if (mvR) train.rotateY(-1.5*dt);
-    }
-
-    renderer.render(scene, camera);
-  });
-
-  window.addEventListener('resize', ()=>{
-    renderer.setSize(window.innerWidth, window.innerHeight);
-  });
-}
-</script>
-</body>
-</html>
+    train.scale.set(0.3,0.3,0.3);
+    train
