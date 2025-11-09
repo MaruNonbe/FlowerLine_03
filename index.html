@@ -1,343 +1,259 @@
-<!doctype html>
-<html lang="ja">
+<!DOCTYPE html>
+<html>
 <head>
-  <meta charset="utf-8" />
-  <title>フラワー長井線 WebAR</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-  <style>
-    html,body{
-      margin:0;height:100%;background:#000;color:#fff;
-      font-family:system-ui,-apple-system,sans-serif;
-      overflow:hidden;
-    }
-    #startScreen{
-      position:fixed;inset:0;
-      display:flex;flex-direction:column;gap:10px;
-      align-items:center;justify-content:center;
-      background:rgba(0,0,0,.9);
-      z-index:20;text-align:center;
-    }
-    #startBtn{
-      background:#29b6f6;color:#012;
-      border:none;border-radius:12px;
-      padding:12px 24px;
-      font-size:18px;font-weight:600;
-      touch-action:manipulation;
-    }
-    #startBtn:active{background:#0288d1;color:#fff;}
-    #cam{
-      position:fixed;inset:0;width:100%;height:100%;
-      object-fit:cover;display:none;background:#000;
-    }
-    #status{
-      position:fixed;top:10px;left:50%;
-      transform:translateX(-50%);
-      background:rgba(0,0,0,.55);
-      padding:6px 10px;border-radius:10px;
-      font-size:13px;z-index:30;display:none;
-      white-space:pre-line;max-width:90vw;
-    }
-    /* 操作ボタン */
-    #controls{
-      position:fixed;bottom:12px;left:50%;transform:translateX(-50%);
-      display:flex;gap:6px;flex-wrap:wrap;justify-content:center;
-      z-index:30;display:none;
-    }
-    .ctrl-btn{
-      background:rgba(255,255,255,.9);color:#005;
-      border:none;border-radius:12px;
-      padding:8px 14px;font-size:14px;font-weight:600;
-      min-width:66px;text-align:center;
-      touch-action:manipulation;
-    }
-    .ctrl-btn:active{background:rgba(200,200,255,.95);}
-  </style>
-
-  <!-- ローカルに置いた three.js r146 と GLTFLoader を読み込む -->
-  <script src="./three.min.js"></script>
-  <script src="./GLTFLoader.js"></script>
+    <meta charset="utf-8">
+    <title>10地点 GPS走行ログ AR</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    
+    <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+    
+    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar-nft.js"></script>
 </head>
-<body>
-  <div id="startScreen">
-    <h1>フラワー長井線 WebAR</h1>
-    <button id="startBtn">開始する</button>
-    <p style="opacity:.7;font-size:13px">Androidなら床に置けます。iPhoneは固定表示です。</p>
-  </div>
 
-  <!-- iOS用カメラ映像 -->
-  <video id="cam" autoplay playsinline muted></video>
+<body style="margin: 0; overflow: hidden;">
 
-  <div id="status">待機中…</div>
+    <a-scene
+        vr-mode-ui="enabled: false"
+        arjs="sourceType: webcam; debugUIEnabled: false;"
+        renderer="logarithmicDepthBuffer: true">
 
-  <!-- 操作用ボタン -->
-  <div id="controls">
-    <button class="ctrl-btn" data-act="forward">前進</button>
-    <button class="ctrl-btn" data-act="back">後進</button>
-    <button class="ctrl-btn" data-act="left">左折</button>
-    <button class="ctrl-btn" data-act="right">右折</button>
-    <button class="ctrl-btn" data-act="stop">停止</button>
-  </div>
+        <a-camera
+            gps-camera="
+                rotation-reader;
+                simulateLatitude: 38.10148128126027; 
+                simulateLongitude: 140.0433090680094;
+            "
+        >
+        </a-camera>
 
-  <script>
-    const startScreen = document.getElementById('startScreen');
-    const startBtn    = document.getElementById('startBtn');
-    const videoEl     = document.getElementById('cam');
-    const statusEl    = document.getElementById('status');
-    const controlsEl  = document.getElementById('controls');
-    const ctrlButtons = Array.from(document.querySelectorAll('.ctrl-btn'));
+        <a-image
+            id="ar-point-1"
+            src="./Index/Picture/TasParkHotel.png"
+            gps-entity-place="latitude: 38.10148128126027; longitude: 140.0433090680094"
+            scale="40 40 40" 
+            visible="false"
+        ></a-image>
+        
+        <a-image
+            id="ar-point-2"
+            src="./Index/Picture/MichinoEkiNagai.png"
+            gps-entity-place="latitude: 38.108970970886325; longitude: 140.04382939078403"
+            scale="40 40 40"
+            visible="false"
+        ></a-image>
+        
+        <a-image
+            id="ar-point-3"
+            src="./Index/Picture/MNagaiShougakkou.png"
+            gps-entity-place="latitude: 38.107796313044474; longitude: 140.04269068239356"
+            scale="40 40 40"
+            visible="false"
+        ></a-image>
 
-    let renderer, scene, camera;
-    let model = null;
-    let moveState = "stop";   // "forward" | "back" | "left" | "right" | "stop"
-    let webxrSupported = false;
-    let xrSession = null;
-    let xrRefSpace = null;
-    let xrHitTestSource = null;
-    let placed = false;
+        <a-image
+            id="ar-point-4"
+            src="./Index/Picture/Kozakurakan.png"
+            gps-entity-place="latitude: 38.110963329145335; longitude: 140.03632275489852"
+            scale="40 40 40"
+            visible="false"
+        ></a-image>
+        
+        <a-image
+            id="ar-point-5"
+            src="./Index/Picture/Marudaiougiya.png"
+            gps-entity-place="latitude: 38.11228246118919; longitude: 140.036198935986"
+            scale="40 40 40"
+            visible="false"
+        ></a-image>
+        
+        <a-image
+            id="ar-point-6"
+            src="./Index/Picture/Nagaisiyakusho.png"
+            gps-entity-place="latitude: 38.1063333593554; longitude: 140.033892868012"
+            scale="40 40 40"
+            visible="false"
+        ></a-image>
 
-    // WebXRが使えるかどうか事前チェック（対応端末のみtrue）
-    if (navigator.xr && navigator.xr.isSessionSupported) {
-      navigator.xr.isSessionSupported('immersive-ar').then(supported => {
-        webxrSupported = supported;
-      });
-    }
+        <a-image
+            id="ar-point-7"
+            src="./Index/Picture/NagaiKougyokoukou.png"
+            gps-entity-place="latitude: 38.114426209437404; longitude: 140.03013087985815"
+            scale="40 40 40"
+            visible="false"
+        ></a-image>
 
-    startBtn.addEventListener('click', startApp);
-    startBtn.addEventListener('touchstart', startApp);
+        <a-image
+            id="ar-point-8"
+            src="./Index/Picture/Nagaikoukou.png"
+            gps-entity-place="latitude: 38.097283861825424; longitude: 140.0380452392042"
+            scale="40 44 40"
+            visible="false"
+        ></a-image>
+        
+        <a-image
+            id="ar-point-9"
+            src="./Index/Picture/MinamiNagai.png"
+            gps-entity-place="latitude: 38.09769549394771; longitude: 140.03458623775896"
+            scale="40 40 40"
+            visible="false"
+        ></a-image>
+        
+        <a-image
+            id="ar-point-10"
+            src="./Index/Picture/Kurunt.png"
+            gps-entity-place="latitude: 38.10491876278905; longitude: 140.03466346205656"
+            scale="40 40 40"
+            visible="false"
+        ></a-image>
 
-    async function startApp(e){
-      e.preventDefault();
-      startScreen.style.display = 'none';
-      statusEl.style.display = 'block';
+    </a-scene>
 
-      // three.js 読み込み確認
-      if (typeof THREE === 'undefined') {
-        statusEl.textContent = 'three.js が読み込めませんでした ❌';
-        return;
-      }
-      if (typeof THREE.GLTFLoader === 'undefined') {
-        statusEl.textContent = 'GLTFLoader.js が見つかりませんでした ❌';
-        return;
-      }
 
-      // WebXRが使えるならXR開始、なければiOSフォールバック
-      if (webxrSupported) {
-        statusEl.textContent = 'ARセッション開始中…床を写してください';
-        startWebXR();
-      } else {
-        statusEl.textContent = 'カメラ起動中…（iOS簡易モード）';
-        startFallbackCamera();
-      }
-    }
+    <script>
+        // ===================================
+        // ▼ 1. 設定項目 (土屋さんの方で要変更)
+        // ===================================
 
-    /* =========================
-       1. WebXRモード（Android）
-       ========================= */
-    async function startWebXR(){
-      // Three.js 共通の初期化
-      renderer = new THREE.WebGLRenderer({alpha:true, antialias:true});
-      renderer.setSize(window.innerWidth, window.innerHeight);
-      renderer.setPixelRatio(window.devicePixelRatio);
-      renderer.xr.enabled = true;
-      document.body.appendChild(renderer.domElement);
+        /**
+         * ★★★ 必須 ★★★
+         * GASをデプロイして取得した「Web アプリ URL」を貼り付け
+         */
+        const GAS_WEB_APP_URL = "https://script.google.com/macros/s/....../exec"; // ★要変更
 
-      scene = new THREE.Scene();
-      camera = new THREE.PerspectiveCamera();
+        /**
+         * ログをGoogleスプレッドシートに送信する間隔（ミリ秒）
+         * 5000 (5秒) を推奨
+         */
+        const LOG_INTERVAL_MS = 5000; 
 
-      // 光
-      const light = new THREE.HemisphereLight(0xffffff, 0x444444, 1.2);
-      scene.add(light);
+        /**
+         * ARを表示するトリガーとなる距離（メートル）
+         * GPS誤差を考慮し、30m～50mを推奨
+         */
+        const TRIGGER_DISTANCE_M = 30; // 30m以内に近づいたら
 
-      // モデルを先に読み込む（非表示にしておく）
-      model = await loadTrainModel();
-      model.visible = false;
-      scene.add(model);
+        /**
+         * ★★★ 必須 ★★★
+         * 10個のターゲットGPSポイントを定義
+         * (ご提示いただいた10地点のデータに更新済み)
+         */
+        const TARGET_POINTS = [
+          { name: 'TasParkHotel', lat: 38.10148128126027, lon: 140.0433090680094, id: 'ar-point-1' },
+          { name: 'MichinoEkiNagai', lat: 38.108970970886325, lon: 140.04382939078403, id: 'ar-point-2' },
+          { name: 'MNagaiShougakkou', lat: 38.107796313044474, lon: 140.04269068239356, id: 'ar-point-3' },
+          { name: 'Kozakurakan', lat: 38.110963329145335, lon: 140.03632275489852, id: 'ar-point-4' },
+          { name: 'Marudaiougiya', lat: 38.11228246118919, lon: 140.036198935986, id: 'ar-point-5' },
+          { name: 'Nagaisiyakusho', lat: 38.1063333593554, lon: 140.033892868012, id: 'ar-point-6' },
+          { name: 'NagaiKougyokoukou', lat: 38.114426209437404, lon: 140.03013087985815, id: 'ar-point-7' },
+          { name: 'Nagaikoukou', lat: 38.097283861825424, lon: 140.0380452392042, id: 'ar-point-8' },
+          { name: 'MinamiNagai', lat: 38.09769549394771, lon: 140.03458623775896, id: 'ar-point-9' },
+          { name: 'Kurunt', lat: 38.10491876278905, lon: 140.03466346205656, id: 'ar-point-10' }
+        ];
 
-      // UIは表示しておく（床置き後に効く）
-      controlsEl.style.display = 'flex';
+        // ===================================
+        // ▼ 2. ユーティリティ関数 (変更なし)
+        // ===================================
 
-      // XRセッション開始
-      xrSession = await navigator.xr.requestSession('immersive-ar', {
-        requiredFeatures: ['hit-test', 'local-floor']
-      });
-      xrSession.addEventListener('end', () => {
-        statusEl.textContent = 'ARセッション終了';
-      });
-
-      // three.js にXRセッションを渡す
-      renderer.xr.setSession(xrSession);
-
-      // リファレンス空間
-      xrRefSpace = await xrSession.requestReferenceSpace('local');
-
-      // ヒットテストの準備
-      const viewerSpace = await xrSession.requestReferenceSpace('viewer');
-      xrHitTestSource = await xrSession.requestHitTestSource({ space: viewerSpace });
-
-      // フレームループ
-      renderer.setAnimationLoop(onXRFrame);
-    }
-
-    function onXRFrame(time, frame){
-      const session = frame.session;
-      const pose = frame.getViewerPose(xrRefSpace);
-      if (!pose) return;
-
-      // まだ置いてないときはヒットテストする
-      if (!placed && xrHitTestSource) {
-        const hitResults = frame.getHitTestResults(xrHitTestSource);
-        if (hitResults.length > 0) {
-          const hit = hitResults[0];
-          const hitPose = hit.getPose(xrRefSpace);
-          if (hitPose && model) {
-            model.visible = true;
-            model.position.set(hitPose.transform.position.x, hitPose.transform.position.y, hitPose.transform.position.z);
-            const q = hitPose.transform.orientation;
-            model.quaternion.set(q.x, q.y, q.z, q.w);
-            statusEl.textContent = 'モデルを置きました ✅';
-            placed = true;
-          }
-        } else {
-          statusEl.textContent = '床を写してください…';
+        function getUserId() {
+            let userId = localStorage.getItem('myWebArUserId');
+            if (!userId) {
+                userId = 'user_' + Date.now().toString(36) + Math.random().toString(36).substring(2);
+                localStorage.setItem('myWebArUserId', userId);
+            }
+            return userId;
         }
-      }
 
-      // 置いたあとは移動処理
-      if (placed && model) {
-        moveModel(model, moveState);
-      }
+        function getDistance(lat1, lon1, lat2, lon2) {
+          const R = 6371e3; // 地球の半径 (メートル)
+          const dLat = (lat2 - lat1) * Math.PI / 180;
+          const dLon = (lon2 - lon1) * Math.PI / 180;
+          const a =
+            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+          return R * c; // 距離 (メートル)
+        }
 
-      renderer.render(scene, camera);
-    }
+        function sendDataToSheet(logType, lat, lon, pointName, distance) {
+          const userId = getUserId();
+          const formData = new FormData();
+          formData.append('userId', userId);
+          formData.append('logType', logType);
+          formData.append('latitude', lat);
+          formData.append('longitude', lon);
+          formData.append('pointName', pointName || '');
+          formData.append('distance', distance || '');
 
-    /* =========================
-       2. iOSフォールバック（カメラ＋固定表示）
-       ========================= */
-    async function startFallbackCamera(){
-      // カメラを開く
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-        videoEl.srcObject = stream;
-        videoEl.style.display = 'block';
-        statusEl.textContent = 'カメラOK ✅\nモデルを読み込み中…';
-      } catch (err) {
-        statusEl.textContent = 'カメラエラー ❌\n' + err.message;
-        return;
-      }
+          fetch(GAS_WEB_APP_URL, {
+            method: 'POST',
+            body: formData,
+            mode: 'no-cors'
+          })
+          .then(response => {
+            console.log('ログ送信:', logType, lat, lon, pointName);
+          })
+          .catch(error => {
+            console.error('シートへの送信エラー:', error);
+          });
+        }
 
-      // three.js 初期化（2Dカメラの上に重ねるだけ）
-      renderer = new THREE.WebGLRenderer({alpha:true, antialias:true});
-      renderer.setSize(window.innerWidth, window.innerHeight);
-      renderer.setPixelRatio(window.devicePixelRatio);
-      renderer.domElement.style.position = 'fixed';
-      renderer.domElement.style.inset = 0;
-      renderer.domElement.style.pointerEvents = 'none';
-      document.body.appendChild(renderer.domElement);
+        // ===================================
+        // ▼ 3. メインのロガー (変更なし)
+        // ===================================
 
-      scene = new THREE.Scene();
-      camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.01, 100);
-      camera.position.set(0,0,3);
-      const light = new THREE.HemisphereLight(0xffffff, 0x444444, 1.2);
-      scene.add(light);
+        function masterLogger() {
+            const camera = document.querySelector('a-camera');
+            if (!camera) return;
+            const currentGps = camera.getAttribute('gps-camera');
+            if (!currentGps || !currentGps.latitude) {
+              console.log('GPS取得待機中...');
+              return; 
+            }
+            const { latitude, longitude } = currentGps;
 
-      model = await loadTrainModel();
-      scene.add(model);
+            let closestTarget = null;
+            let minDistance = Infinity;
 
-      // 画面に収まるよう調整
-      fitModelToView(model, camera);
+            for (const target of TARGET_POINTS) {
+                const distance = getDistance(latitude, longitude, target.lat, target.lon);
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    closestTarget = target;
+                }
+            }
+            if (!closestTarget) return; 
 
-      statusEl.textContent = 'モデル読み込み完了 ✅';
-      controlsEl.style.display = 'flex';
+            if (minDistance <= TRIGGER_DISTANCE_M) {
+                sendDataToSheet('AR_ACTIVE', latitude, longitude, closestTarget.name, minDistance);
+                TARGET_POINTS.forEach(target => {
+                    const el = document.querySelector('#' + target.id);
+                    if (el) {
+                        el.setAttribute('visible', target.id === closestTarget.id);
+                    }
+                });
+            } else {
+                sendDataToSheet('DRIVING', latitude, longitude, null, null);
+                TARGET_POINTS.forEach(target => {
+                    const el = document.querySelector('#' + target.id);
+                    if (el) {
+                        el.setAttribute('visible', false);
+                    }
+                });
+            }
+        }
 
-      // アニメーションループ
-      (function animate(){
-        requestAnimationFrame(animate);
-        // フォールバック時も移動できるように
-        if (model) moveModel(model, moveState);
-        renderer.render(scene, camera);
-      })();
+        // ===================================
+        // ▼ 4. ロガーの起動 (変更なし)
+        // ===================================
 
-      // リサイズ対応
-      window.addEventListener('resize', ()=>{
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        camera.aspect = window.innerWidth/window.innerHeight;
-        camera.updateProjectionMatrix();
-      });
-    }
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                console.log('走行ログの記録を開始します (間隔: ' + LOG_INTERVAL_MS + 'ms)');
+                setInterval(masterLogger, LOG_INTERVAL_MS);
+            }, 3000); 
+        });
 
-    /* =========================
-       共通：モデル読み込み・移動
-       ========================= */
-    function loadTrainModel(){
-      return new Promise((resolve, reject)=>{
-        const loader = new THREE.GLTFLoader();
-        loader.load(
-          './AR-Train_Nagai.glb',
-          gltf => {
-            const m = gltf.scene;
-            // いったん原点に置く
-            m.position.set(0,0,0);
-            resolve(m);
-          },
-          undefined,
-          err => reject(err)
-        );
-      });
-    }
-
-    // 画面に収める（フォールバック用）
-    function fitModelToView(model, camera){
-      const box = new THREE.Box3().setFromObject(model);
-      const size = new THREE.Vector3();
-      box.getSize(size);
-      const center = new THREE.Vector3();
-      box.getCenter(center);
-      model.position.sub(center);
-      const maxDim = Math.max(size.x, size.y, size.z);
-      const fov = camera.fov * (Math.PI/180);
-      const dist = maxDim / (2 * Math.tan(fov/2));
-      camera.position.set(0,0,dist*1.2);
-      camera.lookAt(0,0,0);
-      const scale = 1 / maxDim;
-      model.scale.setScalar(scale * 2);
-    }
-
-    // 移動ロジック（列車のローカルZを前後、Y回転で左右）
-    function moveModel(target, state){
-      const speed = 0.01;      // 移動量
-      const rotSpeed = 0.02;   // 回転量
-      switch(state){
-        case 'forward':
-          target.translateZ(-speed); // three.jsは -Z が前
-          break;
-        case 'back':
-          target.translateZ(speed);
-          break;
-        case 'left':
-          target.rotation.y += rotSpeed;
-          break;
-        case 'right':
-          target.rotation.y -= rotSpeed;
-          break;
-        case 'stop':
-        default:
-          // 何もしない
-          break;
-      }
-    }
-
-    // ボタンクリックで moveState を変更
-    ctrlButtons.forEach(btn=>{
-      btn.addEventListener('click', ()=>{
-        moveState = btn.dataset.act;
-        statusEl.textContent = '操作: ' + btn.textContent;
-      });
-      btn.addEventListener('touchstart', ()=>{
-        moveState = btn.dataset.act;
-        statusEl.textContent = '操作: ' + btn.textContent;
-      });
-    });
-
-  </script>
+    </script>
 </body>
 </html>
